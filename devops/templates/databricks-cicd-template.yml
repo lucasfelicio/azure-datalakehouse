@@ -28,5 +28,6 @@ jobs:
                 inlineScript: |
                   az config set extension.use_dynamic_install=yes_without_promot
 
-                  $databricksWorspace = (az resource list --resource-group ${{parameters.resourceGroupName}} --query "[?type=='Microsoft.Databricks/workspaces']" | ConvertFrom-Json)[0]
+                  $databricksWorkspace = (az resource list --resource-group ${{parameters.resourceGroupName}} --query "[?type=='Microsoft.Databricks/workspaces']" | ConvertFrom-Json)[0]
+                  $databricksWorkspace = (az databricks workspace show --ids $databricksWorkspace.id | ConvertFrom-Json)
                   done
