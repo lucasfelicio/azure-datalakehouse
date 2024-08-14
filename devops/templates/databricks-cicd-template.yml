@@ -26,22 +26,7 @@ jobs:
                 scriptType: 'bash'
                 scriptLocation: 'inlineScript'
                 inlineScript: |
-                  # Obter o token de acesso do Databricks usando a service connection
-                  DATABRICKS_AAD_TOKEN=$(az account get-access-token --resource https://databricks.azure.net --query accessToken -o tsv)
+                  az config set extension.use_dynamic_install=yes_without_promot
 
-                  # Obter a URL do Databricks workspace
-                  DATABRICKS_URL=$(az databricks workspace show --resource-group ${{parameters.resourceGroupName}} --name ${{parameters.databricksWorkspaceName}} --query workspaceUrl -o tsv)
-
-                  # Instalar o cliente Databricks CLI
-                  pip install databricks-cli
-
-                  # Configurar o Databricks CLI para usar o token de AAD
-                  databricks configure --aad-token <<EOF
-                  $DATABRICKS_URL
-                  $DATABRICKS_AAD_TOKEN
-                  EOF
-
-                  # Mover arquivos para a pasta no Databricks
-                  for file in ${{parameters.notebooksPath}}/*; do
-                    databricks workspace import --overwrite $file /team_engineering/$(basename $file)
+                  $databricksWorspace = (az resource list --resource-group ${{parameters.resourceGroupName}} --query "[?type=='Microsoft.Databricks/workspaces']" | ConvertFrom-Json)[0]
                   done
