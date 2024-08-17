@@ -1,0 +1,36 @@
+trigger:
+  branches:
+    include: 
+      - develop
+  paths:
+    include:
+      - 'notebooks/*'
+
+variables:
+  - group: adw-dev-cicd
+
+  - name: vmImageName
+    value: ubuntu-latest
+  - name: notebooksPath
+    value: "notebooks"
+
+pool:
+  vmImage: $(vmImageName)
+
+stages:
+  - stage: deploy_to_dev
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+    jobs:
+      - job: Deploy
+        steps:
+          - checkout: self
+            displayName: "Checkout Repository"
+
+          - template: "templates/template-cicd.yml"
+            parameters:
+              env: "Develop"
+              environmentName: $(devEnvironmentName)
+              resourceGroupName: $(devResourceGroupName)
+              serviceConnection: $(devServiceConnectionName)
+              notebooksPath: $(notebooksPath)
+              azureDatabricksPrincipalId: $(azureDatabricksPrincipalId)
