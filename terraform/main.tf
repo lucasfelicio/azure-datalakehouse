@@ -60,55 +60,55 @@ resource "azurerm_data_factory" "adf_dev" {
   location = var.region  
 }
 
-# # Deploy Azure Storage Account
-# resource "azurerm_storage_account" "adls_prod" {
-#   name = "adlslucasdev"
-#   resource_group_name = azurerm_resource_group.rg_prod.name
-#   location = var.region
-#   account_tier = "Standard"
-#   account_replication_type = "LRS"
-#   is_hns_enabled = true
-# }
+# Deploy Azure Storage Account
+resource "azurerm_storage_account" "adls_prod" {
+  name = "adlslucasdev"
+  resource_group_name = azurerm_resource_group.rg_prod.name
+  location = var.region
+  account_tier = "Standard"
+  account_replication_type = "LRS"
+  is_hns_enabled = true
+}
 
-# resource "azurerm_storage_account" "adls_dev" {
-#   name = "adlslucasprod"
-#   resource_group_name = azurerm_resource_group.rg_dev.name
-#   location = var.region
-#   account_tier = "Standard"
-#   account_replication_type = "LRS"
-#   is_hns_enabled = true
-# }
+resource "azurerm_storage_account" "adls_dev" {
+  name = "adlslucasprod"
+  resource_group_name = azurerm_resource_group.rg_dev.name
+  location = var.region
+  account_tier = "Standard"
+  account_replication_type = "LRS"
+  is_hns_enabled = true
+}
 
-# # Deploy Containers Data Lake
-# resource "azurerm_storage_container" "container_landing_zone" {
-#   name = "landing-zone"
-#   storage_account_name = azurerm_storage_account.adls_prod.name
-#   container_access_type = "private"
-# }
+# Deploy Containers Data Lake
+resource "azurerm_storage_container" "container_landing_zone" {
+  name = "landing-zone"
+  storage_account_name = azurerm_storage_account.adls_prod.name
+  container_access_type = "private"
+}
 
-# resource "azurerm_storage_container" "container_bronze" {
-#   name = "bronze"
-#   storage_account_name = azurerm_storage_account.adls_prod.name
-#   container_access_type = "private"
-# }
+resource "azurerm_storage_container" "container_bronze" {
+  name = "bronze"
+  storage_account_name = azurerm_storage_account.adls_prod.name
+  container_access_type = "private"
+}
 
-# resource "azurerm_storage_container" "container_silver" {
-#   name = "silver"
-#   storage_account_name = azurerm_storage_account.adls_prod.name
-#   container_access_type = "private"
-# }
+resource "azurerm_storage_container" "container_silver" {
+  name = "silver"
+  storage_account_name = azurerm_storage_account.adls_prod.name
+  container_access_type = "private"
+}
 
-# resource "azurerm_storage_container" "container_gold" {
-#   name = "gold"
-#   storage_account_name = azurerm_storage_account.adls_prod.name
-#   container_access_type = "private"
-# }
+resource "azurerm_storage_container" "container_gold" {
+  name = "gold"
+  storage_account_name = azurerm_storage_account.adls_prod.name
+  container_access_type = "private"
+}
 
-# resource "azurerm_storage_container" "container_dev" {
-#   name = "dev"
-#   storage_account_name = azurerm_storage_account.adls_dev.name
-#   container_access_type = "private"
-# }
+resource "azurerm_storage_container" "container_dev" {
+  name = "dev"
+  storage_account_name = azurerm_storage_account.adls_dev.name
+  container_access_type = "private"
+}
 
 # Deploy Azure Databricks
 resource "azurerm_databricks_workspace" "databricks_prod" {
