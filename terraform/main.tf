@@ -1,128 +1,133 @@
 terraform {
   required_providers {
     azurerm = {
-      source = "hashicorp/azurerm"
+      source  = "hashicorp/azurerm"
       version = "3.113.0"
     }
   }
 }
 
-provider "azurerm" {
-  features {}
-}
-
 # Define locals
 locals {
-  prod_fixed = "estus-prod"
-  dev_fixed = "estus-dev"
-  current_date = formatdate("YYYYMMDD", timestamp())
+  prod_fixed   = "estus-lucas-prod"
+  dev_fixed    = "estus-lucas-dev"
 }
 
-# Deploy Resources Groups
+# Ambientes de Produção
 resource "azurerm_resource_group" "rg_prod" {
-    name = "rg-${local.prod_fixed}-${local.current_date}"
-    location = var.region
+  provider = azurerm.prod
+  name     = "rg-${local.prod_fixed}"
+  location = var.region
 }
 
-resource "azurerm_resource_group" "rg_dev" {
-    name = "rg-${local.dev_fixed}-${local.current_date}"
-    location = var.region
-}
-
-# Deploy Azure Key Vault
 resource "azurerm_key_vault" "akv_prod" {
-  name = "akv-${local.prod_fixed}-${local.current_date}"
-  location = var.region
+  provider            = azurerm.prod
+  name                = "akv-${local.prod_fixed}"
+  location            = var.region
   resource_group_name = azurerm_resource_group.rg_prod.name
-  sku_name = "standard"
-  tenant_id = data.azurerm_client_config.current.tenant_id
+  sku_name            = "standard"
+  tenant_id           = data.azurerm_client_config.current.tenant_id
 }
 
-resource "azurerm_key_vault" "akv_dev" {
-  name = "akv-${local.dev_fixed}-${local.current_date}"
-  location = var.region
-  resource_group_name = azurerm_resource_group.rg_dev.name
-  sku_name = "standard"
-  tenant_id = data.azurerm_client_config.current.tenant_id
-}
-
-# Deploy Azure Data Factory Production
 resource "azurerm_data_factory" "adf_prod" {
-  name = "adf-${local.prod_fixed}-${local.current_date}"
+  provider            = azurerm.prod
+  name                = "adf-${local.prod_fixed}"
   resource_group_name = azurerm_resource_group.rg_prod.name
-  location = var.region  
+  location            = var.region
 }
 
-# Deploy Azure Data Factory Develop
-resource "azurerm_data_factory" "adf_dev" {
-  name = "adf-${local.dev_fixed}-${local.current_date}"
-  resource_group_name = azurerm_resource_group.rg_dev.name
-  location = var.region  
-}
-
-# Deploy Azure Storage Account
 resource "azurerm_storage_account" "adls_prod" {
-  name = "adlslucasdev"
+  provider            = azurerm.prod
+  name                = "adlsestuslucasprod"
   resource_group_name = azurerm_resource_group.rg_prod.name
-  location = var.region
-  account_tier = "Standard"
+  location            = var.region
+  account_tier        = "Standard"
   account_replication_type = "LRS"
-  is_hns_enabled = true
+  is_hns_enabled      = true
 }
 
-resource "azurerm_storage_account" "adls_dev" {
-  name = "adlslucasprod"
-  resource_group_name = azurerm_resource_group.rg_dev.name
-  location = var.region
-  account_tier = "Standard"
-  account_replication_type = "LRS"
-  is_hns_enabled = true
-}
-
-# Deploy Containers Data Lake
 resource "azurerm_storage_container" "container_landing_zone" {
-  name = "landing-zone"
+  provider             = azurerm.prod
+  name                 = "landing-zone"
   storage_account_name = azurerm_storage_account.adls_prod.name
   container_access_type = "private"
 }
 
 resource "azurerm_storage_container" "container_bronze" {
-  name = "bronze"
+  provider             = azurerm.prod
+  name                 = "bronze"
   storage_account_name = azurerm_storage_account.adls_prod.name
   container_access_type = "private"
 }
 
 resource "azurerm_storage_container" "container_silver" {
-  name = "silver"
+  provider             = azurerm.prod
+  name                 = "silver"
   storage_account_name = azurerm_storage_account.adls_prod.name
   container_access_type = "private"
 }
 
 resource "azurerm_storage_container" "container_gold" {
-  name = "gold"
+  provider             = azurerm.prod
+  name                 = "gold"
   storage_account_name = azurerm_storage_account.adls_prod.name
   container_access_type = "private"
 }
 
+resource "azurerm_databricks_workspace" "databricks_prod" {
+  provider            = azurerm.prod
+  name                = "adw-${local.prod_fixed}"
+  resource_group_name = azurerm_resource_group.rg_prod.name
+  location            = var.region
+  sku                 = "premium"
+  managed_resource_group_name = "rg-adw-${local.prod_fixed}"
+}
+
+# Ambientes de Desenvolvimento
+resource "azurerm_resource_group" "rg_dev" {
+  provider = azurerm.dev
+  name     = "rg-${local.dev_fixed}"
+  location = var.region
+}
+
+resource "azurerm_key_vault" "akv_dev" {
+  provider            = azurerm.dev
+  name                = "akv-${local.dev_fixed}"
+  location            = var.region
+  resource_group_name = azurerm_resource_group.rg_dev.name
+  sku_name            = "standard"
+  tenant_id           = data.azurerm_client_config.current_dev.tenant_id
+}
+
+resource "azurerm_data_factory" "adf_dev" {
+  provider            = azurerm.dev
+  name                = "adf-${local.dev_fixed}"
+  resource_group_name = azurerm_resource_group.rg_dev.name
+  location            = var.region
+}
+
+resource "azurerm_storage_account" "adls_dev" {
+  provider            = azurerm.dev
+  name                = "adlsestuslucasdev"
+  resource_group_name = azurerm_resource_group.rg_dev.name
+  location            = var.region
+  account_tier        = "Standard"
+  account_replication_type = "LRS"
+  is_hns_enabled      = true
+}
+
 resource "azurerm_storage_container" "container_dev" {
-  name = "dev"
+  provider             = azurerm.dev
+  name                 = "develop"
   storage_account_name = azurerm_storage_account.adls_dev.name
   container_access_type = "private"
 }
 
-# Deploy Azure Databricks
-resource "azurerm_databricks_workspace" "databricks_prod" {
-  name = "adb-${local.prod_fixed}-${local.current_date}"
-  resource_group_name = azurerm_resource_group.rg_prod.name
-  location = var.region
-  sku = "premium"
-  managed_resource_group_name = "rg-adb-${local.prod_fixed}-${local.current_date}"  
-}
-
 resource "azurerm_databricks_workspace" "databricks_dev" {
-  name = "adw-${local.dev_fixed}-${local.current_date}"
+  provider            = azurerm.dev
+  name                = "adw-${local.dev_fixed}"
   resource_group_name = azurerm_resource_group.rg_dev.name
-  location = var.region
-  sku = "premium"
-  managed_resource_group_name = "rg-adb-${local.dev_fixed}-${local.current_date}"  
+  location            = var.region
+  sku                 = "premium"
+  managed_resource_group_name = "rg-adw-${local.dev_fixed}"
 }
