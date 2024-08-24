@@ -14,7 +14,7 @@ parameters:
 
 steps:
   - task: AzureCLI@2
-    displayName: "Configure Azure CLI"
+    displayName: "1 - Configure Azure CLI"
     inputs:
       azureSubscription: ${{parameters.serviceConnection}}
       scriptType: 'pscore'

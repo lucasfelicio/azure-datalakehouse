@@ -1,0 +1,85 @@
+parameters:
+  - name: env
+    displayName: Environment
+    type: string
+    values:
+    - dev
+    - prd
+  - name: DataFactoryName
+    displayName: Data Factory Name
+    type: string
+  - name: DataFactoryResourceGroupName
+    displayName: Data Factory Resource Group Name
+    type: string
+  - name: DataFactorySubscriptionId
+    displayName: Data Factory Subscription Id
+    type: string
+  - name: ServiceConnection
+    displayName: Service Connection to Deploy
+    type: string
+  - name: Location
+    displayName: Data Factory Location
+    type: string
+ 
+jobs:
+  - deployment: deploymentjob${{ parameters.env }}
+    displayName: Deployment to ${{ parameters.env }} 
+    environment: deploy ${{ parameters.env }}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: self
+            displayName: '1 Retrieve Repository'
+            clean: true 
+
+          # Stop triggers
+          - task: AzurePowerShell@5
+            displayName: '2 Stop triggers'
+            inputs:
+              azureSubscription: '$(ServiceConnection)'
+              pwsh: true
+              azurePowerShellVersion: LatestVersion
+              scriptType: filePath
+              scriptPath: '$(Pipeline.Workspace)\ArmTemplatesArtifact\PrePostDeploymentScript.ps1'
+              scriptArguments: >
+                -armTemplate '$(Pipeline.Workspace)\ArmTemplatesArtifact\ARMTemplateForFactory.json'
+                -ResourceGroupName $(DataFactoryResourceGroupName)
+                -DataFactoryName $(DataFactoryName)
+                -predeployment $true
+                -deleteDeployment $false
+                 
+          # Deploy ADF Artifact
+          - task: AzureResourceManagerTemplateDeployment@3
+            displayName: '3 Deploy ADF Artifact'
+            inputs:
+              deploymentScope: 'Resource Group'
+              azureResourceManagerConnection: '$(ServiceConnection)'
+              subscriptionId: $(DataFactorySubscriptionId)
+              action: 'Create Or Update Resource Group'
+              resourceGroupName: $(DataFactoryResourceGroupName)
+              location: $(Location)
+              templateLocation: 'Linked artifact'
+              csmFile: '$(Pipeline.Workspace)/ArmTemplatesArtifact/ARMTemplateForFactory.json'
+              csmParametersFile: '$(Pipeline.Workspace)/ArmTemplatesArtifact/ARMTemplateParametersForFactory.json'
+              overrideParameters: '-factoryName $(DataFactoryName)'
+              deploymentMode: 'Incremental'
+            env: 
+                SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+                 
+          # Start triggers and cleanup
+          - task: AzurePowerShell@5
+            displayName: '4 Start triggers and cleanup'
+            condition: eq('${{ parameters.env }}', 'prd') 
+            inputs:
+              azureSubscription: '$(ServiceConnection)'
+              pwsh: true
+              azurePowerShellVersion: LatestVersion
+              scriptType: filePath
+              scriptPath: '$(Pipeline.Workspace)\ArmTemplatesArtifact\PrePostDeploymentScript.ps1'
+              scriptArguments: >
+                -armTemplate $(Pipeline.Workspace)/ArmTemplatesArtifact/ARMTemplateForFactory.json
+                -ResourceGroupName $(DataFactoryResourceGroupName)
+                -DataFactoryName $(DataFactoryName)
+                -predeployment $false
+                -deleteDeployment $true

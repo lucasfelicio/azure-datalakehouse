@@ -9,8 +9,8 @@ terraform {
 
 # Define locals
 locals {
-  prod_fixed   = "estus-lucas-prod"
-  dev_fixed    = "estus-lucas-dev"
+  prod_fixed   = "eastus-lucas-prod"
+  dev_fixed    = "eastus-lucas-dev"
 }
 
 # Ambientes de Produção
@@ -38,7 +38,7 @@ resource "azurerm_data_factory" "adf_prod" {
 
 resource "azurerm_storage_account" "adls_prod" {
   provider            = azurerm.prod
-  name                = "adlsestuslucasprod"
+  name                = "adlseastuslucasprod"
   resource_group_name = azurerm_resource_group.rg_prod.name
   location            = var.region
   account_tier        = "Standard"
@@ -108,7 +108,7 @@ resource "azurerm_data_factory" "adf_dev" {
 
 resource "azurerm_storage_account" "adls_dev" {
   provider            = azurerm.dev
-  name                = "adlsestuslucasdev"
+  name                = "adlseastuslucasdev"
   resource_group_name = azurerm_resource_group.rg_dev.name
   location            = var.region
   account_tier        = "Standard"

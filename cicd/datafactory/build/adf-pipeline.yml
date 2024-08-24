@@ -1,0 +1,112 @@
+# General Variables
+variables:
+  - group: ParamsGen
+  - group: ParamsDev
+  - group: ParamsPrd
+
+  - name: vmImageName
+    value: ubuntu-latest
+ 
+# When to create a pipeline run
+trigger:
+  branches:
+    include:
+    - main
+    - develop
+  paths:
+    exclude:
+    - build/*
+ 
+stages:
+
+# Create Artifact of ADF files
+- stage: CreateADFArtifact
+  displayName: Create ADF Artifact
+  condition: and(succeeded(), eq(variables['Build.Reason'], 'PullRequest'), or(eq(variables['System.PullRequest.TargetBranch'], 'refs/heads/develop'), eq(variables['System.PullRequest.TargetBranch'], 'refs/heads/main')))
+  jobs:
+  - job: CreateArtifactJob
+    workspace:
+      clean: all
+    pool:
+      vmImage: $(vmImage)
+    steps:
+    - checkout: self
+      displayName: '1 Retrieve Repository'
+      clean: true
+ 
+    # Installs Node.js on agent
+    - task: NodeTool@0
+      displayName: '2 Install Node.js'
+      inputs:
+        versionSpec: '18.x'
+        checkLatest: true    
+
+    # Install npm package of ADF
+    - task: Npm@1
+      displayName: '3 Install npm package'
+      inputs:
+        command: 'install'
+        workingDir: '$(Build.Repository.LocalPath)$(PackageLocation)'
+        verbose: true
+ 
+    # Validate ADF in repository
+    - task: Npm@1
+      displayName: '4 Validate ADF'
+      inputs:
+        command: 'custom'
+        workingDir: '$(Build.Repository.LocalPath)$(PackageLocation)'
+        customCommand: 'run build validate $(Build.Repository.LocalPath)/src /subscriptions/$(DataFactorySubscriptionId)/resourceGroups/$(DataFactoryResourceGroupName)/providers/Microsoft.DataFactory/factories/$(DataFactoryName)'
+ 
+    # Generate ARM template from repos
+    - task: Npm@1
+      displayName: '5 Generate ARM template'
+      inputs:
+        command: 'custom'
+        workingDir: '$(Build.Repository.LocalPath)$(PackageLocation)'
+        customCommand: 'run build export $(Build.Repository.LocalPath)/src /subscriptions/$(DataFactorySubscriptionId)/resourceGroups/$(DataFactoryResourceGroupName)/providers/Microsoft.DataFactory/factories/$(DataFactoryName) "$(ArmTemplateFolder)"'
+ 
+    # Publish ARM template as artifact
+    - task: PublishPipelineArtifact@1
+      displayName: '6 Publish ARM template as artifact'
+      inputs:
+        targetPath: '$(Build.Repository.LocalPath)$(PackageLocation)$(ArmTemplateFolder)'
+        artifact: 'ArmTemplatesArtifact'
+        publishLocation: 'pipeline'
+ 
+# Deploy Dev environment
+- stage: DeployDev
+  displayName: Deploy Dev
+  variables:
+  - group: ParamsDev
+  pool:
+    vmImage: $(vmImage)
+  condition: Succeeded()
+  dependsOn: CreateADFArtifact
+  jobs:
+    - template: deployADF.yml
+      parameters:
+        env: dev
+        DataFactoryName: $(DataFactoryName)
+        DataFactoryResourceGroupName: $(DataFactoryResourceGroupName)
+        DataFactorySubscriptionId: $(DataFactorySubscriptionId)
+        Location: $(Location)
+        ServiceConnection: $(ServiceConnection)
+
+# Deploy Prd environment
+- stage: DeployPrd
+  displayName: Deploy Prd
+  variables:
+  - group: ParamsPrd
+  pool:
+    vmImage: $(vmImage)
+  condition: and(succeeded(), eq(variables['Build.Reason'], 'PullRequest'), eq(variables['System.PullRequest.TargetBranch'], 'refs/heads/main'))
+  dependsOn: CreateADFArtifact
+  jobs:
+    - template: deployADF.yml
+      parameters:
+        env: prd
+        DataFactoryName: $(DataFactoryName)
+        DataFactoryResourceGroupName: $(DataFactoryResourceGroupName)
+        DataFactorySubscriptionId: $(DataFactorySubscriptionId)
+        Location: $(Location)
+        ServiceConnection: $(ServiceConnection)
