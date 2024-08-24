@@ -1,7 +1,7 @@
 provider "azurerm" {
   features {}
-  subscription_id = var.subscription_id_prod
-  alias = "prod"
+  subscription_id = var.subscription_id_prd
+  alias = "prd"
 }
 
 provider "azurerm" {
