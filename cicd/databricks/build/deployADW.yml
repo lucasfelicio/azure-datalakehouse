@@ -1,80 +1,91 @@
 parameters:
   - name: env
     type: string
-  - name: environmentName
+    values:
+    - dev
+    - prd
+  - name: ResourceGroupName
     type: string
-  - name: resourceGroupName
+  - name: ServiceConnectionName
     type: string
-  - name: serviceConnection
+  - name: NotebooksPath
     type: string
-  - name: notebooksPath
-    type: string
-  - name: azureDatabricksPrincipalId
+  - name: AzureDatabricksPrincipalId
     type: string
 
-steps:
-  - task: AzureCLI@2
-    displayName: "1 - Configure Azure CLI"
-    inputs:
-      azureSubscription: ${{parameters.serviceConnection}}
-      scriptType: 'pscore'
-      scriptLocation: 'inlineScript'
-      inlineScript: |
-        az config set extension.use_dynamic_install=yes_without_prompt
+jobs:
+  - deployment: deploymentjob${{ parameters.env }}
+    displayName: Deployment to ${{ parameters.env }} 
+    environment: deploy ${{ parameters.env }}
+    strategy:
+          runOnce:
+            deploy:
+              steps:
+              - checkout: self
+                displayName: "1 - Checkout Repository"
 
-  - task: AzureCLI@2
-    displayName: "Get Databricks Workspace Information"
-    inputs:
-      azureSubscription: ${{parameters.serviceConnection}}
-      scriptType: 'pscore'
-      scriptLocation: 'inlineScript'
-      inlineScript: |
-        $databricksWorkspace = (az resource list --resource-group ${{parameters.resourceGroupName}} --query "[?type=='Microsoft.Databricks/workspaces']" | ConvertFrom-Json)[0]
-        $databricksWorkspaceInfo = (az databricks workspace show --ids $databricksWorkspace.id | ConvertFrom-Json)
-        echo "##vso[task.setvariable variable=databricksWorkspaceResourceId]$($databricksWorkspaceInfo.Id)"
-        echo "##vso[task.setvariable variable=databricksWorkspaceUrl]$($databricksWorkspaceInfo.workspaceUrl)"
-        echo "##vso[task.setvariable variable=databricksWorkspaceLocation]$($databricksWorkspaceInfo.location)"
+              - task: AzureCLI@2
+                displayName: "2 - Configure Azure CLI"
+                inputs:
+                  azureSubscription: ${{ parameters.ServiceConnectionName }}
+                  scriptType: 'pscore'
+                  scriptLocation: 'inlineScript'
+                  inlineScript: |
+                    az config set extension.use_dynamic_install=yes_without_prompt
 
-  - task: AzureCLI@2
-    displayName: "Generate Databricks Bearer Token"
-    inputs:
-      azureSubscription: ${{parameters.serviceConnection}}
-      scriptType: 'pscore'
-      scriptLocation: 'inlineScript'
-      inlineScript: |
-        $databricksWorkspaceUrl = "$(databricksWorkspaceUrl)"
-        if (-not $databricksWorkspaceUrl) {
-          Write-Error "Databricks workspace URL is empty. Exiting."
-          exit 1
-        }
+              - task: AzureCLI@2
+                displayName: "3 - Get Databricks Workspace Information"
+                inputs:
+                  azureSubscription: ${{ parameters.ServiceConnectionName }}
+                  scriptType: 'pscore'
+                  scriptLocation: 'inlineScript'
+                  inlineScript: |
+                    $databricksWorkspace = (az resource list --resource-group ${{ parameters.resourceGroupName }} --query "[?type=='Microsoft.Databricks/workspaces']" | ConvertFrom-Json)[0]
+                    $databricksWorkspaceInfo = (az databricks workspace show --ids $databricksWorkspace.id | ConvertFrom-Json)
+                    echo "##vso[task.setvariable variable=databricksWorkspaceResourceId]$($databricksWorkspaceInfo.Id)"
+                    echo "##vso[task.setvariable variable=databricksWorkspaceUrl]$($databricksWorkspaceInfo.workspaceUrl)"
+                    echo "##vso[task.setvariable variable=databricksWorkspaceLocation]$($databricksWorkspaceInfo.location)"
 
-        $headers = @{}
-        $headers["Authorization"] = "Bearer $((az account get-access-token --resource ${{parameters.azureDatabricksPrincipalId}} | ConvertFrom-Json).accessToken)"
-        $headers["X-Databricks-Azure-SP-Management-Token"] = "$((az account get-access-token --resource https://management.core.windows.net/ | ConvertFrom-Json).accessToken)"
-        $headers["X-Databricks-Azure-Workspace-Resource-Id"] = "$(databricksWorkspaceResourceId)"
+              - task: AzureCLI@2
+                displayName: "4 - Generate Databricks Bearer Token"
+                inputs:
+                  azureSubscription: ${{ parameters.ServiceConnectionName }}
+                  scriptType: 'pscore'
+                  scriptLocation: 'inlineScript'
+                  inlineScript: |
+                    $databricksWorkspaceUrl = "$(databricksWorkspaceUrl)"
+                    if (-not $databricksWorkspaceUrl) {
+                      Write-Error "Databricks workspace URL is empty. Exiting."
+                      exit 1
+                    }
 
-        $json = @{}
-        $json["lifetime_seconds"] = 300
+                    $headers = @{}
+                    $headers["Authorization"] = "Bearer $((az account get-access-token --resource ${{ parameters.azureDatabricksPrincipalId }} | ConvertFrom-Json).accessToken)"
+                    $headers["X-Databricks-Azure-SP-Management-Token"] = "$((az account get-access-token --resource https://management.core.windows.net/ | ConvertFrom-Json).accessToken)"
+                    $headers["X-Databricks-Azure-Workspace-Resource-Id"] = "$(databricksWorkspaceResourceId)"
 
-        $req = Invoke-WebRequest -Uri "https://$databricksWorkspaceUrl/api/2.0/token/create" -Body ($json | convertTo-Json) -ContentType "application/json" -Method Post -Headers $headers
-        $bearerToken = ($req.Content | ConvertFrom-Json).token_value
-        echo "##vso[task.setvariable variable=bearerToken]$bearerToken"
+                    $json = @{}
+                    $json["lifetime_seconds"] = 300
 
-  - task: AzureCLI@2
-    displayName: "Install and Import Azure Databricks CICD Tools Module"
-    inputs:
-      azureSubscription: ${{parameters.serviceConnection}}
-      scriptType: 'pscore'
-      scriptLocation: 'inlineScript'
-      inlineScript: |
-        Install-Module -Name azure.databricks.cicd.tools -Force -Scope CurrentUser
-        Import-Module -Name azure.databricks.cicd.tools
+                    $req = Invoke-WebRequest -Uri "https://$databricksWorkspaceUrl/api/2.0/token/create" -Body ($json | convertTo-Json) -ContentType "application/json" -Method Post -Headers $headers
+                    $bearerToken = ($req.Content | ConvertFrom-Json).token_value
+                    echo "##vso[task.setvariable variable=bearerToken]$bearerToken"
 
-  - task: AzureCLI@2
-    displayName: "Deploy Notebooks to Databricks"
-    inputs:
-      azureSubscription: ${{parameters.serviceConnection}}
-      scriptType: 'pscore'
-      scriptLocation: 'inlineScript'
-      inlineScript: |
-        Import-DatabricksFolder -BearerToken "$(bearerToken)" -Region "$(databricksWorkspaceLocation)" -LocalPath $(Build.Repository.LocalPath)/${{parameters.notebooksPath}} -DatabricksPath '/team-engineering' -Clean
+              - task: AzureCLI@2
+                displayName: "5 - Install and Import Azure Databricks CICD Tools Module"
+                inputs:
+                  azureSubscription: ${{ parameters.ServiceConnectionName }}
+                  scriptType: 'pscore'
+                  scriptLocation: 'inlineScript'
+                  inlineScript: |
+                    Install-Module -Name azure.databricks.cicd.tools -Force -Scope CurrentUser
+                    Import-Module -Name azure.databricks.cicd.tools
+
+              - task: AzureCLI@2
+                displayName: "6 - Deploy Notebooks to Databricks"
+                inputs:
+                  azureSubscription: ${{ parameters.ServiceConnectionName }}
+                  scriptType: 'pscore'
+                  scriptLocation: 'inlineScript'
+                  inlineScript: |
+                    Import-DatabricksFolder -BearerToken "$(bearerToken)" -Region "$(databricksWorkspaceLocation)" -LocalPath $(Build.Repository.LocalPath)/${{parameters.notebooksPath}} -DatabricksPath '/team-engineering' -Clean

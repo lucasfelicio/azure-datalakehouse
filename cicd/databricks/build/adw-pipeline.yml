@@ -1,36 +1,56 @@
+# General Variables
+variables:
+  - group: ParamsGen
+  - name: VmImageName
+    value: ubuntu-latest
+  - name: NotebooksPath
+    value: notebooks
+
+# When to create a pipeline run
 trigger:
   branches:
-    include: 
+    include:
+      - main 
       - develop
   paths:
     include:
-      - 'notebooks/*'
-
-variables:
-  - group: adw-dev-cicd
-
-  - name: vmImageName
-    value: ubuntu-latest
-  - name: notebooksPath
-    value: "notebooks"
-
-pool:
-  vmImage: $(vmImageName)
+      - notebooks/*
+    exclude: 
+      - build/*
 
 stages:
-  - stage: deploy_to_dev
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
-    jobs:
-      - job: Deploy
-        steps:
-          - checkout: self
-            displayName: "Checkout Repository"
 
-          - template: "deployADW.yml"
-            parameters:
-              env: "Develop"
-              environmentName: $(devEnvironmentName)
-              resourceGroupName: $(devResourceGroupName)
-              serviceConnection: $(devServiceConnectionName)
-              notebooksPath: $(notebooksPath)
-              azureDatabricksPrincipalId: $(azureDatabricksPrincipalId)
+# Deploy Dev environment
+  - stage: DeployDev
+    displayName: Deploy Dev
+    variables:
+      - group: ParamsDev
+    pool:
+      vmImage: $(VmImageName)
+    condition: and(succeeded(), eq(variables['Build.Reason'], 'PullRequest'), or(eq(variables['System.PullRequest.TargetBranch'], 'refs/heads/develop'), eq(variables['System.PullRequest.TargetBranch'], 'refs/heads/main')))
+    jobs:
+      - template: "deployADW.yml"
+        parameters:
+          env: "dev"
+          ResourceGroupName: $(ResourceGroupName)
+          ServiceConnection: $(ServiceConnectionName)
+          NotebooksPath: $(NotebooksPath)
+          AzureDatabricksPrincipalId: $(AzureDatabricksPrincipalId)
+
+# Deploy Prd environment
+  - stage: DeployPrd
+    displayName: Deploy Prd
+    variables:
+      - group: ParamsPrd
+    pool:
+      vmImage: $(VmImageName)
+    condition: and(succeeded(), eq(variables['Build.Reason'], 'PullRequest'), eq(variables['System.PullRequest.TargetBranch'], 'refs/heads/main'))
+    dependsOn: DeployDev
+    jobs:
+      - template: "deployADW.yml"
+        parameters:
+          env: "prd"
+          ResourceGroupName: $(ResourceGroupName)
+          ServiceConnection: $(ServiceConnectionName)
+          NotebooksPath: $(NotebooksPath)
+          AzureDatabricksPrincipalId: $(AzureDatabricksPrincipalId)

@@ -1,10 +1,7 @@
 # General Variables
 variables:
   - group: ParamsGen
-  - group: ParamsDev
-  - group: ParamsPrd
-
-  - name: vmImageName
+  - name: VmImageName
     value: ubuntu-latest
  
 # When to create a pipeline run
@@ -28,46 +25,41 @@ stages:
     workspace:
       clean: all
     pool:
-      vmImage: $(vmImage)
+      vmImage: $(VmImageName)
     steps:
     - checkout: self
-      displayName: '1 Retrieve Repository'
+      displayName: '1 - Checkout Repository'
       clean: true
  
-    # Installs Node.js on agent
     - task: NodeTool@0
-      displayName: '2 Install Node.js'
+      displayName: '2 - Install Node.js'
       inputs:
         versionSpec: '18.x'
         checkLatest: true    
 
-    # Install npm package of ADF
     - task: Npm@1
-      displayName: '3 Install npm package'
+      displayName: '3 - Install npm package'
       inputs:
         command: 'install'
         workingDir: '$(Build.Repository.LocalPath)$(PackageLocation)'
         verbose: true
  
-    # Validate ADF in repository
     - task: Npm@1
-      displayName: '4 Validate ADF'
+      displayName: '4 - Validate ADF'
       inputs:
         command: 'custom'
         workingDir: '$(Build.Repository.LocalPath)$(PackageLocation)'
         customCommand: 'run build validate $(Build.Repository.LocalPath)/src /subscriptions/$(DataFactorySubscriptionId)/resourceGroups/$(DataFactoryResourceGroupName)/providers/Microsoft.DataFactory/factories/$(DataFactoryName)'
  
-    # Generate ARM template from repos
     - task: Npm@1
-      displayName: '5 Generate ARM template'
+      displayName: '5 - Generate ARM template'
       inputs:
         command: 'custom'
         workingDir: '$(Build.Repository.LocalPath)$(PackageLocation)'
         customCommand: 'run build export $(Build.Repository.LocalPath)/src /subscriptions/$(DataFactorySubscriptionId)/resourceGroups/$(DataFactoryResourceGroupName)/providers/Microsoft.DataFactory/factories/$(DataFactoryName) "$(ArmTemplateFolder)"'
  
-    # Publish ARM template as artifact
     - task: PublishPipelineArtifact@1
-      displayName: '6 Publish ARM template as artifact'
+      displayName: '6 - Publish ARM template as artifact'
       inputs:
         targetPath: '$(Build.Repository.LocalPath)$(PackageLocation)$(ArmTemplateFolder)'
         artifact: 'ArmTemplatesArtifact'
@@ -79,7 +71,7 @@ stages:
   variables:
   - group: ParamsDev
   pool:
-    vmImage: $(vmImage)
+    vmImage: $(VmImageName)
   condition: Succeeded()
   dependsOn: CreateADFArtifact
   jobs:
@@ -98,7 +90,7 @@ stages:
   variables:
   - group: ParamsPrd
   pool:
-    vmImage: $(vmImage)
+    vmImage: $(VmImageName)
   condition: and(succeeded(), eq(variables['Build.Reason'], 'PullRequest'), eq(variables['System.PullRequest.TargetBranch'], 'refs/heads/main'))
   dependsOn: CreateADFArtifact
   jobs:
@@ -109,4 +101,4 @@ stages:
         DataFactoryResourceGroupName: $(DataFactoryResourceGroupName)
         DataFactorySubscriptionId: $(DataFactorySubscriptionId)
         Location: $(Location)
-        ServiceConnection: $(ServiceConnection)
+        ServiceConnectionName: $(ServiceConnectionName)

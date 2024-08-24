@@ -14,7 +14,7 @@ parameters:
   - name: DataFactorySubscriptionId
     displayName: Data Factory Subscription Id
     type: string
-  - name: ServiceConnection
+  - name: ServiceConnectionName
     displayName: Service Connection to Deploy
     type: string
   - name: Location
@@ -30,14 +30,13 @@ jobs:
         deploy:
           steps:
           - checkout: self
-            displayName: '1 Retrieve Repository'
+            displayName: '1 - Checkout Repository'
             clean: true 
 
-          # Stop triggers
           - task: AzurePowerShell@5
-            displayName: '2 Stop triggers'
+            displayName: '2 - Stop triggers'
             inputs:
-              azureSubscription: '$(ServiceConnection)'
+              azureSubscription: '$(ServiceConnectionName)'
               pwsh: true
               azurePowerShellVersion: LatestVersion
               scriptType: filePath
@@ -49,12 +48,11 @@ jobs:
                 -predeployment $true
                 -deleteDeployment $false
                  
-          # Deploy ADF Artifact
           - task: AzureResourceManagerTemplateDeployment@3
-            displayName: '3 Deploy ADF Artifact'
+            displayName: '3 - Deploy ADF Artifact'
             inputs:
               deploymentScope: 'Resource Group'
-              azureResourceManagerConnection: '$(ServiceConnection)'
+              azureResourceManagerConnection: '$(ServiceConnectionName)'
               subscriptionId: $(DataFactorySubscriptionId)
               action: 'Create Or Update Resource Group'
               resourceGroupName: $(DataFactoryResourceGroupName)
@@ -67,12 +65,11 @@ jobs:
             env: 
                 SYSTEM_ACCESSTOKEN: $(System.AccessToken)
                  
-          # Start triggers and cleanup
           - task: AzurePowerShell@5
-            displayName: '4 Start triggers and cleanup'
+            displayName: '4 - Start triggers and cleanup'
             condition: eq('${{ parameters.env }}', 'prd') 
             inputs:
-              azureSubscription: '$(ServiceConnection)'
+              azureSubscription: '$(ServiceConnectionName)'
               pwsh: true
               azurePowerShellVersion: LatestVersion
               scriptType: filePath
