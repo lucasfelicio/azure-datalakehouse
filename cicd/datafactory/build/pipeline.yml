@@ -1,0 +1,181 @@
+trigger:
+  branches:
+    include:
+    - main
+    - develop
+  paths:
+    include:
+    - src/**
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - name: codePath
+    value: "$(Build.Repository.LocalPath)/src"
+  - name: buildPath
+    value: "$(Build.Repository.LocalPath)/build"   
+
+stages:
+  - stage: ci
+    displayName: 'CI - Build e Validação de Artefatos'
+    variables:
+      - group: ParamsDev 
+    jobs:
+      - job: BuildAndValidate
+        displayName: 'Build e Validação'
+        steps:
+          - checkout: self
+            displayName: 'Passo 1. Checkout Git Repo'
+
+          - task: UseNode@1
+            displayName: 'Passo 2. Instalar Node.js'
+            inputs:
+              version: '18.x'
+
+          - task: Npm@1
+            displayName: 'Passo 3. Instalar pacotes npm'
+            inputs:
+              command: 'install'
+              workingDir: '${{ variables.buildPath }}'
+              verbose: true
+
+          - task: Npm@1
+            displayName: 'Passo 4. Validar o código'
+            inputs:
+              command: 'custom'
+              workingDir: '${{ variables.buildPath }}'
+              customCommand: 'run build validate ${{ variables.codePath }} /subscriptions/$(DataFactorySubscriptionId)/resourceGroups/$(DataFactoryResourceGroupName)/providers/Microsoft.DataFactory/factories/$(DataFactoryName)'
+
+          - task: Npm@1
+            displayName: 'Passo 5. Gerar ARM Template'
+            inputs:
+              command: 'custom'
+              workingDir: '${{ variables.buildPath }}'
+              customCommand: 'run build export ${{ variables.codePath }} /subscriptions/$(DataFactorySubscriptionId)/resourceGroups/$(DataFactoryResourceGroupName)/providers/Microsoft.DataFactory/factories/$(DataFactoryName) "ArmTemplate"'
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Passo 6. Publicar o ARM Template'
+            inputs:
+              targetPath: '${{ variables.buildPath }}/ArmTemplate'
+              artifact: 'adf-artifact-$(Build.BuildNumber)'
+              publishLocation: 'pipeline'
+
+  - stage: cdDev
+    displayName: 'CD Deploy Dev'
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'), eq(variables['build.SourceBranchName'], 'develop'))
+    dependsOn: ci  
+    variables:
+      - group: ParamsDev
+    jobs:
+      - job: deployDev
+        displayName: 'Deploy para Dev'
+        steps:
+          - checkout: self
+            displayName: 'Passo 1. Checkout Git Repo'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Passo 2. Baixar artefatos'
+            inputs:
+              artifactName: 'adf-artifact-$(Build.BuildNumber)'
+              targetPath: '${{ variables.buildPath }}/ArmTemplate'
+
+          - task: AzurePowerShell@5
+            displayName: 'Passo 3. Stop triggers'
+            inputs:
+              azureSubscription: service-connection-dev
+              pwsh: true
+              azurePowerShellVersion: LatestVersion
+              scriptType: filePath
+              scriptPath: '${{ variables.buildPath }}/PrePostDeploymentScript.Ver3.ps1'
+              scriptArguments: >
+                -armTemplate '${{ variables.buildPath }}/ArmTemplate/ARMTemplateForFactory.json'
+                -ResourceGroupName $(DataFactoryResourceGroupName)
+                -DataFactoryName $(DataFactoryName)
+                -predeployment $true
+                -deleteDeployment $false
+
+          - task: AzureResourceManagerTemplateDeployment@3
+            displayName: 'Passo 4. Realizar Deploy'
+            inputs:
+              deploymentScope: 'Resource Group'
+              azureResourceManagerConnection: service-connection-dev
+              subscriptionId: $(DataFactorySubscriptionId)
+              action: 'Create Or Update Resource Group'
+              resourceGroupName: $(DataFactoryResourceGroupName)
+              location: $(LocationName)
+              templateLocation: 'Linked artifact'
+              csmFile: '${{ variables.buildPath }}/ArmTemplate/ARMTemplateForFactory.json'
+              csmParametersFile: '${{ variables.buildPath }}/ArmTemplate/ARMTemplateParametersForFactory.json'
+              overrideParameters: >
+                -factoryName $(DataFactoryName)
+              deploymentMode: 'Incremental'
+            env: 
+                SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+  - stage: cdPrd
+    displayName: 'CD Deploy Prd'
+    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'), eq(variables['build.SourceBranchName'], 'main'))
+    dependsOn: ci  
+    variables:
+      - group: ParamsPrd
+    jobs:
+      - job: deployPrd
+        displayName: 'Deploy para Prd'
+        steps:
+          - checkout: self
+            displayName: 'Passo 1. Checkout Git Repo'
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Passo 2. Baixar artefatos'
+            inputs:
+              artifactName: 'adf-artifact-$(Build.BuildNumber)'
+              targetPath: '${{ variables.buildPath }}/ArmTemplate'
+
+          - task: AzurePowerShell@5
+            displayName: 'Passo 3. Stop triggers'
+            inputs:
+              azureSubscription: service-connection-prd
+              pwsh: true
+              azurePowerShellVersion: LatestVersion
+              scriptType: filePath
+              scriptPath: '${{ variables.buildPath }}/PrePostDeploymentScript.Ver3.ps1'
+              scriptArguments: >
+                -armTemplate '${{ variables.buildPath }}/ArmTemplate/ARMTemplateForFactory.json'
+                -ResourceGroupName $(DataFactoryResourceGroupName)
+                -DataFactoryName $(DataFactoryName)
+                -predeployment $true
+                -deleteDeployment $false
+
+          - task: AzureResourceManagerTemplateDeployment@3
+            displayName: 'Passo 4. Realizar Deploy'
+            inputs:
+              deploymentScope: 'Resource Group'
+              azureResourceManagerConnection: service-connection-prd
+              subscriptionId: $(DataFactorySubscriptionId)
+              action: 'Create Or Update Resource Group'
+              resourceGroupName: $(DataFactoryResourceGroupName)
+              location: $(LocationName)
+              templateLocation: 'Linked artifact'
+              csmFile: '${{ variables.buildPath }}/ArmTemplate/ARMTemplateForFactory.json'
+              csmParametersFile: '${{ variables.buildPath }}/ArmTemplate/ARMTemplateParametersForFactory.json'
+              overrideParameters: >
+                -factoryName $(DataFactoryName)
+                -default_properties_env_value prd
+              deploymentMode: 'Incremental'
+            env: 
+                SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+          - task: AzurePowerShell@5
+            displayName: 'Passo 5. Start triggers '
+            inputs:
+              azureSubscription: service-connection-prd
+              pwsh: true
+              azurePowerShellVersion: LatestVersion
+              scriptType: filePath
+              scriptPath: '${{ variables.buildPath }}/PrePostDeploymentScript.Ver3.ps1'
+              scriptArguments: >
+                -armTemplate '${{ variables.buildPath }}/ArmTemplate/ARMTemplateForFactory.json'
+                -ResourceGroupName $(DataFactoryResourceGroupName)
+                -DataFactoryName $(DataFactoryName)
+                -predeployment $false
+                -deleteDeployment $true
