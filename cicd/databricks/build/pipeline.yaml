@@ -1,0 +1,51 @@
+trigger:
+  branches:
+    include:
+      - develop
+      - main
+  paths:
+    include:
+      - 'notebooks/**'
+
+pool:
+  vmImage: ubuntu-latest
+  
+stages:
+  - stage: deployADW
+    displayName: "Deploy to Dev"
+    jobs:
+      - job: CIJob
+        displayName: "Countinuous Integration Steps"
+        steps:
+          - checkout: self
+            clean: true
+          - task: UsePythonVersion@0
+            displayName: 'Use Python 3.9'
+            inputs:
+              versionSpec: 3.9          
+      - job: DeployToDev
+        displayName: "Deploy to Dev Environment"
+        condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+        variables:
+          - group: ParamsDEV
+        steps:
+          - script: |
+              curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+            displayName: 'download and install databricks-cli'
+
+          - script: |
+              echo $(databricksToken) | databricks configure --host $(databricksWorkspaceUrl) --token $(databricksToken) 
+            displayName: 'Configure DataBricks DEV CLI'
+
+          - script: |
+              databricks workspace delete /Workspace/$(databricksFolderPath)
+              echo "Deletar dir"
+              
+              databricks workspace mkdirs /Workspace/$(databricksFolderPath)
+              echo "Criar dir"
+              
+              databricks workspace import_dir $(System.DefaultWorkingDirectory)/notebooks /Workspace/$(databricksFolderPath)
+              echo "Copiar conteúdo"
+
+            displayName: 'Copiar para o Workspace'
+        
